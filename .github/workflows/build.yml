@@ -1,0 +1,109 @@
+name: Build OpenHarmony App
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  OH_SDK_VERSION: '4.1.7.5'    # OpenHarmony API 4.1+
+  NODE_VERSION: '18'
+  TIANDITU_KEY: ${{ secrets.TIANDITU_KEY }}
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup OpenHarmony SDK
+        uses: ohos-rs/setup-ohos-sdk@v2
+        with:
+          version: ${{ env.OH_SDK_VERSION }}
+          components: 'native;node'
+          cache: true
+          mirror: 'true'
+
+      - name: Verify SDK
+        run: |
+          echo "SDK root: $OH_SDK_ROOT"
+          echo "Contents:"
+          ls -la $OH_SDK_ROOT/
+          echo "Native:"
+          ls -la $OH_SDK_ROOT/native/
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install dependencies
+        run: |
+          cd phase1_opengl_demo
+          npm install 2>&1 | tail -5
+
+      - name: Configure Tianditu Key
+        if: env.TIANDITU_KEY != ''
+        run: |
+          sed -i "s/请输入天地图Key/${{ env.TIANDITU_KEY }}/g" \
+            phase1_opengl_demo/entry/src/main/ets/pages/Index.ets
+          echo "Key configured (masked): ****${TIANDITU_KEY: -4}"
+
+      - name: Build with Hvigor
+        id: build
+        run: |
+          cd phase1_opengl_demo
+          
+          # 设置 OpenHarmony 环境变量
+          export OH_SDK_ROOT=${{ env.OH_SDK_ROOT }}
+          export PATH=$OH_SDK_ROOT/native/build-tools/latest/ohos-sClang64/bin:$PATH
+          
+          # 尝试 hvigorw 构建
+          if [ -f "./hvigor/hvigorw" ]; then
+            chmod +x ./hvigor/hvigorw
+            ./hvigorw assembleApp --mode module -p product=default 2>&1 | tail -30
+          elif [ -f "../hvigor/hvigorw" ]; then
+            chmod +x ../hvigor/hvigorw
+            ../hvigorw assembleApp --mode module -p product=default 2>&1 | tail -30
+          else
+            # hvigorw 不存在，尝试直接调用 node + hvigor 包
+            npm install -g @ohos/hvigor@latest 2>&1 | tail -3
+            npx hvigor assembleApp --mode module -p product=default 2>&1 | tail -30
+          fi
+
+      - name: Find output files
+        id: outputs
+        run: |
+          find phase1_opengl_demo -name "*.hap" -o -name "*.app" 2>/dev/null | head -10
+          find . -path "*/build/outputs/*" -type f 2>/dev/null | head -20
+
+      - name: List build artifacts
+        run: |
+          echo "=== Build outputs ==="
+          find . -name "*.hap" -o -name "*.app" -o -name "*.so" 2>/dev/null | head -20
+          echo "=== entry/build ==="
+          ls -la phase1_opengl_demo/entry/build/ 2>/dev/null || echo "No build dir"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: openharmony-build-outputs
+          path: |
+            ${{ github.workspace }}/phase1_opengl_demo/entry/build/outputs/**/*.hap
+            ${{ github.workspace }}/phase1_opengl_demo/entry/build/outputs/**/*.app
+            ${{ github.workspace }}/phase1_opengl_demo/**/*.so
+          retention-days: 7
+          ignore-no-files: true
+
+      - name: Build summary
+        if: always()
+        run: |
+          echo "## Build Result" >> $GITHUB_STEP_SUMMARY
+          echo "- SDK: ${{ env.OH_SDK_VERSION }}" >> $GITHUB_STEP_SUMMARY
+          echo "- SDK Path: ${{ env.OH_SDK_ROOT }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Status: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY

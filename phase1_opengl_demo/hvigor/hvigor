@@ -1,0 +1,17 @@
+#!/bin/bash
+#
+# hvigor wrapper script for Linux/macOS
+#
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+OHOS_SDK_HOME="${OHOS_SDK_HOME:-$HOME/openharmony-sdk}"
+
+if [ -f "$SCRIPT_DIR/../node_modules/.bin/hvigor" ]; then
+    exec "$SCRIPT_DIR/../node_modules/.bin/hvigor" "$@"
+elif [ -f "$OHOS_SDK_HOME/toolchains/hvigor/bin/hvigor" ]; then
+    exec "$OHOS_SDK_HOME/toolchains/hvigor/bin/hvigor" "$@"
+else
+    echo "Error: hvigor not found."
+    echo "Please install OpenHarmony SDK and set OHOS_SDK_HOME."
+    exit 1
+fi

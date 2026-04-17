@@ -1,0 +1,15 @@
+// Top-level build file
+plugins {
+    id 'com.huawei.ohos.hap' version '4.1.0.200' apply false
+    id 'com.huawei.ohos.shared' version '4.1.0.200' apply false
+}
+
+allprojects {
+    repositories {
+        maven { url 'https://repo1.maven.org/maven2' }
+    }
+}
+
+task clean(type: Delete) {
+    delete rootProject.buildDir
+}

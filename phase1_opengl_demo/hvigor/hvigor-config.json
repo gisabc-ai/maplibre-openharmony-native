@@ -1,0 +1,36 @@
+{
+  "modelVersion": "5.0.0",
+  "compatVersion": "4.0.0",
+  "projectType": "application",
+  "sourceCodeType": "ArkTS",
+  "modules": [
+    {
+      "name": "entry",
+      "type": "entry",
+      "hsp": false,
+      "res": [
+        {
+          "path": "src/main/resources",
+          "excludeDirs": []
+        },
+        {
+          "path": "src/main/ets/pages",
+          "excludeDirs": []
+        }
+      ],
+      "dependencies": []
+    },
+    {
+      "name": "web",
+      "type": "shared",
+      "hsp": false,
+      "res": [
+        {
+          "path": "src/main/resources",
+          "excludeDirs": []
+        }
+      ],
+      "dependencies": []
+    }
+  ]
+}

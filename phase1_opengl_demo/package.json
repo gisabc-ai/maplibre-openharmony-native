@@ -1,0 +1,13 @@
+{
+  "name": "maplibre-openharmony-native",
+  "version": "1.0.0",
+  "description": "MapLibre GL JS Native on OpenHarmony - Phase 1 OpenGL ES Demo",
+  "scripts": {
+    "build": "hvigor build",
+    "clean": "hvigor clean"
+  },
+  "devDependencies": {
+    "@ohos/hypium": "4.1.0.200",
+    "@ohos/hvigor-ohos-plugin": "4.1.0.200"
+  }
+}
