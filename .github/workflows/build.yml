@@ -39,12 +39,12 @@ jobs:
       - name: Huawei Developer Login
         id: hw-login
         env:
-          HW_CRED: ${{ secrets.HW_CREDENTIALS }}
+          HW_CREDENTIALS: ${{ secrets.HW_CREDENTIALS }}
         run: |
           echo "=== Logging into Huawei Developer Portal ==="
           
-          # 解码凭证
-          CRED=$(echo "$HW_CRED" | base64 -d)
+          # 解码凭证 (HW_CREDENTIALS = base64(phone:password))
+          CRED=$(echo "$HW_CREDENTIALS" | base64 -d)
           PHONE="${CRED%%:*}"
           PASSWORD="${CRED##*:}"
           echo "Login ID: ${PHONE:0:3}***${PHONE: -4}"
