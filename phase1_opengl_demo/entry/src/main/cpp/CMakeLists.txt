@@ -19,6 +19,7 @@ add_library(maplibre_ohos SHARED
     map_renderer.cpp
     tile_loader.cpp
     coordinate.cpp
+    gesture_handler.cpp
 )
 
 # ============================================================

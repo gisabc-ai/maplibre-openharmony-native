@@ -6,90 +6,71 @@
 #include <string>
 #include <map>
 #include <functional>
+#include <list>
+#include <mutex>
 
 namespace maplibre {
 
+class GestureHandler;
+
+/**
+ * LRU 纹理缓存
+ * 线程安全，限制最大条目数，超出时淘汰最久未使用的纹理
+ */
+class LRUTextureCache {
+public:
+    LRUTextureCache(size_t maxEntries = 64);
+    ~LRUTextureCache();
+
+    // 查找（命中会提升优先级）
+    GLuint find(const std::string& key);
+
+    // 插入（如果已存在则更新）
+    void insert(const std::string& key, GLuint tex);
+
+    // 删除
+    void remove(const std::string& key);
+
+    // 清空所有
+    void clear();
+
+    // 获取当前条目数
+    size_t size() const;
+
+private:
+    struct Entry {
+        GLuint tex;
+        // 使用双向链表节点
+    };
+    size_t maxEntries_;
+    std::map<std::string, std::list<std::pair<std::string, GLuint>>::iterator> cache_;
+    std::list<std::pair<std::string, GLuint>> lruList_; // front=最新, back=最旧
+    mutable std::mutex mutex_;
+};
+
 /**
  * MapRenderer — OpenGL ES 2.0 地图渲染器
- * 
- * 负责：
- * 1. EGL 初始化（连接 Native Window）
- * 2. OpenGL ES 上下文管理
- * 3. 瓦片纹理加载与缓存
- * 4. 帧渲染
- * 
- * 使用 OpenHarmony NDK NativeWindow API (API 4.1+)
  */
 class MapRenderer {
 public:
     MapRenderer();
     ~MapRenderer();
 
-    /**
-     * 初始化渲染器
-     * @param nativeWindow OHNativeWindow 指针，来自 ArkTS 侧传入
-     * @return true 成功，false 失败
-     */
     bool initialize(void* nativeWindow);
-
-    /**
-     * 渲染一帧
-     * 调用时机：每當需要重绘时（手动 or VSync 触发）
-     */
     void renderFrame();
-
-    /**
-     * 加载瓦片图片为 OpenGL 纹理
-     * @param x 瓦片 X 坐标 (Web Mercator tile coordinate)
-     * @param y 瓦片 Y 坐标
-     * @param z 缩放级别 (zoom level)
-     * @param data PNG/JPEG 原始字节数据
-     * @param len 数据长度
-     */
     void loadTile(int x, int y, int z, const uint8_t* data, size_t len);
-
-    /**
-     * 设置地图中心点（经纬度 + 缩放级别）
-     * @param lon 经度
-     * @param lat 纬度
-     * @param zoom 缩放级别
-     */
     void setCenter(double lon, double lat, int zoom);
-
-    /**
-     * 设置屏幕分辨率（像素）
-     * @param width 屏幕宽度
-     * @param height 屏幕高度
-     */
     void setScreenSize(int width, int height);
-
-    /**
-     * 平移地图（像素增量）
-     * @param dx X 方向增量
-     * @param dy Y 方向增量
-     */
     void pan(int dx, int dy);
-
-    /**
-     * 缩放等级调整
-     * @param delta 缩放增量（正数放大，负数缩小）
-     * @param mouseX 鼠标 X（用于确定缩放中心）
-     * @param mouseY 鼠标 Y
-     */
     void zoom(int delta, int mouseX, int mouseY);
-
-    /**
-     * 清理资源（析构或销毁时调用）
-     */
+    void zoomBy(float scaleFactor, int centerX, int centerY);
     void cleanup();
-
-    /**
-     * 是否已初始化
-     */
     bool isInitialized() const { return initialized_; }
 
+    // 绑定手势处理器（外部拥有）
+    void setGestureHandler(GestureHandler* handler) { gestureHandler_ = handler; }
+
 private:
-    // 内部辅助
     bool initEGL(void* nativeWindow);
     bool initGLES();
     bool compileShader(GLenum type, const char* src, GLuint* outShader);
@@ -97,27 +78,37 @@ private:
     GLuint loadTileTexture(int x, int y, int z, const uint8_t* data, size_t len);
     void renderTile(int x, int y, int z);
     void updateMVP();
+    void updateMVPWithGesture();
     std::string tileKey(int x, int y, int z) const;
 
-    // EGL 资源
+    // 矩阵计算
+    void multiplyMatrix(float* out, const float* a, const float* b);
+    void perspectiveMatrix(float* m, float fovY, float aspect, float near, float far);
+    void lookAtMatrix(float* m, float eyeX, float eyeY, float eyeZ, float centerX, float centerY, float centerZ, float upX, float upY, float upZ);
+
+    // 瓦片网格渲染
+    void renderTileGrid();
+
+    // EGL
     EGLDisplay display_;
     EGLContext context_;
     EGLSurface surface_;
     EGLConfig  config_;
 
-    // GLES 资源
+    // GLES
     GLuint shaderProgram_;
-    GLuint vbo_;              // 顶点缓冲
-    GLuint ibo_;              // 索引缓冲
+    GLuint vbo_;
+    GLuint ibo_;
+    GLuint gridVbo_;
+    GLuint gridIbo_;
 
-    // Shader 句柄
     GLint locPosition_;
     GLint locTexCoord_;
     GLint locMVPMatrix_;
     GLint locTexture_;
 
-    // 瓦片纹理缓存 key: "z/x/y"
-    std::map<std::string, GLuint> tileTextures_;
+    // LRU 纹理缓存
+    LRUTextureCache textureCache_;
 
     // 地图状态
     double centerLon_;
@@ -125,10 +116,20 @@ private:
     int    zoom_;
     int    screenWidth_;
     int    screenHeight_;
-    float  offsetX_;   // 像素偏移（平移用）
+    float  offsetX_;
     float  offsetY_;
+    float  scale_;
+    float  rotation_;    // 绕 Z 轴旋转（弧度）
+    float  tilt_;        // 倾斜角度（弧度）
 
-    // MVP 矩阵（列主序，16 元素 float 数组）
+    // 手势相关
+    float gestureZoomScale_;  // 手势引起的缩放（乘法因子）
+    GestureHandler* gestureHandler_;
+
+    // MVP 矩阵（列主序）
+    float  modelMatrix_[16];
+    float  viewMatrix_[16];
+    float  projMatrix_[16];
     float  mvpMatrix_[16];
 
     bool   initialized_;

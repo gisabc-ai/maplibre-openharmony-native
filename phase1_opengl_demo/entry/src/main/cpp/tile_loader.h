@@ -4,20 +4,22 @@
 #include <string>
 #include <functional>
 #include <cstdint>
+#include <atomic>
+#include <mutex>
+#include <vector>
+#include <chrono>
 
 namespace maplibre {
 
 /**
- * TileLoader — 天地图瓦片异步加载器
+ * TileLoader — 高可靠瓦片下载器
  * 
- * 使用 libcurl 异步下载 WMTS 瓦片图片，
- * 支持 PNG/JPEG 格式，下载完成后通过回调返回原始字节。
- * 
- * 使用天地图 WMTS 服务，用户需自行申请 Key：
- *   https://console.tianditu.gov.cn/
- * 
- * 瓦片 URL 模板：
- *   https://t0.tianditu.gov.cn/DataServer?T=vec_w&x={x}&y={y}&l={z}&tk={key}
+ * 特性：
+ * - HTTP 缓存头解析（Cache-Control, ETags, Last-Modified）
+ * - 3 次指数退避重试
+ * - 最多 4 个并发下载
+ * - 内存缓存（LRU，最大 32 条）
+ * - 支持代理
  */
 class TileLoader {
 public:
@@ -26,51 +28,41 @@ public:
 
     /**
      * 异步加载瓦片
-     * 
-     * @param x     瓦片 X 坐标
-     * @param y     瓦片 Y 坐标  
-     * @param z     缩放级别
-     * @param key   天地图 API Key（可共用，也可每个瓦片不同）
-     * @param callback 下载完成回调
-     *                  - data: PNG/JPEG 原始字节
-     *                  - len:  数据长度
-     *                  - 若下载失败，data 为 nullptr，len 为 0
-     * 
-     * 注意：回调在 curl 工作线程中执行，
-     *       若要操作 GL 资源，需 post 到主线程。
+     * @param x, y, z   瓦片坐标
+     * @param key       天地图 API Key
+     * @param callback  回调 (data, len, cacheHit)
      */
     void loadTileAsync(int x, int y, int z,
                        const std::string& key,
-                       std::function<void(const uint8_t* data, size_t len)> callback);
+                       std::function<void(const uint8_t* data, size_t len, bool fromCache)> callback);
 
     /**
-     * 同步加载瓦片（阻塞）
-     * 
-     * @param x   瓦片 X 坐标
-     * @param y   瓦片 Y 坐标
-     * @param z   缩放级别
-     * @param key 天地图 API Key
-     * @return  瓦片数据指针（需调用 freeTileData 释放），nullptr 表示失败
+     * 同步加载（阻塞）
      */
     uint8_t* loadTileSync(int x, int y, int z, const std::string& key, size_t* outLen);
 
     /**
-     * 释放瓦片数据（由 loadTileSync 分配）
+     * 释放数据
      */
     void freeTileData(uint8_t* data);
 
     /**
-     * 取消所有待处理的请求
+     * 取消所有
      */
     void cancelAll();
 
     /**
-     * 设置代理（可选）
+     * 设置代理
      */
     void setProxy(const std::string& host, int port);
 
+    /**
+     * 获取/设置并发数
+     */
+    void setMaxConcurrency(int n);
+    int getMaxConcurrency() const { return maxConcurrency_; }
+
 private:
-    // 内部实现
     struct Impl;
     Impl* pImpl_;
 };

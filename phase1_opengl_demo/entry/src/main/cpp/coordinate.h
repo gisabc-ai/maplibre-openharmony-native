@@ -2,76 +2,83 @@
 #define COORDINATE_H
 
 /**
- * coordinate.h — Web Mercator 坐标转换工具
+ * coordinate.h — Web Mercator 坐标转换工具 (增强版)
  * 
  * 实现：
- *   - 经纬度 <-> 瓦片坐标
- *   - 经纬度 <-> OpenGL 标准化设备坐标 (NDC)
- *   - 屏幕像素 <-> OpenGL NDC
- * 
- * 基于 EPSG:3857 (Web Mercator)
+ *   - 经纬度 <-> 瓦片坐标 (TMS)
+ *   - 经纬度 <-> Web Mercator 像素坐标
+ *   - 经纬度 <-> 屏幕像素坐标（考虑缩放、平移）
+ *   - 屏幕像素坐标 -> 经纬度（反向投影）
+ *   - 缩放级别与像素精度的关系
+ *   - 瓦片 NDC 位置计算
  */
 
 namespace maplibre {
 
+// Web Mercator 球体半径 (米)
+static constexpr double MERCATOR_RADIUS = 20037508.342789244;
+static constexpr double MERCATOR_MAX_LAT = 85.051128779806604;
+
 /**
- * 经纬度转瓦片坐标（Web Mercator TMS 瓦片系统）
- * 
- * @param lat 纬度 (-85.0511 ~ 85.0511)
- * @param lon 经度 (-180 ~ 180)
- * @param zoom 缩放级别 (0 ~ 19)
- * @param outX 输出：瓦片 X 坐标
- * @param outY 输出：瓦片 Y 坐标
+ * 经纬度 -> 瓦片坐标（Web Mercator TMS）
  */
 void latLonToTile(double lat, double lon, int zoom, int* outX, int* outY);
 
 /**
- * 瓦片 X 坐标转经度（Web Mercator TMS）
- * 
- * @param x 瓦片 X 坐标
- * @param zoom 缩放级别
- * @return 经度 (-180 ~ 180)
+ * 瓦片坐标 -> 经纬度
  */
 double tileToLon(int x, int zoom);
-
-/**
- * 瓦片 Y 坐标转纬度（Web Mercator TMS）
- * 
- * @param y 瓦片 Y 坐标
- * @param zoom 缩放级别
- * @return 纬度 (-85.0511 ~ 85.0511)
- */
 double tileToLat(int y, int zoom);
 
 /**
- * 经纬度转 OpenGL 标准化设备坐标 (NDC)
- * 
- * @param lat 纬度
- * @param lon 经度
- * @param zoom 缩放级别
- * @param screenW 屏幕宽度（像素）
- * @param screenH 屏幕高度（像素）
- * @param outX 输出：NDC X (-1.0 ~ 1.0)
- * @param outY 输出：NDC Y (-1.0 ~ 1.0)
+ * 经纬度 -> Web Mercator 像素坐标（以地图左上角为原点，zoom 级别）
+ * @return 像素 X
  */
-void latLonToGL(double lat, double lon, int zoom,
-                 int screenW, int screenH,
-                 float* outX, float* outY);
+double lonToMercatorPixelX(double lon, int zoom);
+double latToMercatorPixelY(double lat, int zoom);
 
 /**
- * 瓦片坐标转 OpenGL NDC（左上角为原点，Y 向下）
- * 
- * @param tileX 瓦片 X 坐标
- * @param tileY 瓦片 Y 坐标
- * @param zoom 缩放级别
- * @param screenW 屏幕宽度
- * @param screenH 屏幕高度
- * @param offsetX 像素级平移偏移
- * @param offsetY 像素级平移偏移
- * @param outX 输出：NDC X
- * @param outY 输出：NDC Y
- * @param outW  输出：NDC 宽度
- * @param outH  输出：NDC 高度
+ * Web Mercator 像素坐标 -> 经纬度
+ */
+void mercatorPixelToLatLon(double px, double py, int zoom,
+                           double* outLat, double* outLon);
+
+/**
+ * 屏幕像素坐标 -> 经纬度（考虑当前地图状态）
+ * @param screenX, screenY  屏幕像素坐标（以左上角为原点）
+ * @param centerLon, centerLat, zoom  当前地图中心和缩放级别
+ * @param screenW, screenH          屏幕尺寸
+ * @param offsetX, offsetY          当前平移偏移（NDC 单位）
+ * @param scale                     当前缩放因子
+ * @param outLat, outLon            输出经纬度
+ */
+void screenToLatLon(int screenX, int screenY,
+                   double centerLon, double centerLat, int zoom,
+                   int screenW, int screenH,
+                   float offsetX, float offsetY, float scale,
+                   double* outLat, double* outLon);
+
+/**
+ * 经纬度 -> 屏幕像素坐标
+ */
+void latLonToScreen(double lat, double lon,
+                    double centerLon, double centerLat, int zoom,
+                    int screenW, int screenH,
+                    float offsetX, float offsetY, float scale,
+                    int* outX, int* outY);
+
+/**
+ * 缩放级别 -> 每像素经度/纬度分辨率（赤道处）
+ */
+double zoomToResolution(int zoom);
+
+/**
+ * 缩放级别 -> 像素比例（一个像素对应多少 Mercator 单位）
+ */
+double zoomToPixelScale(int zoom);
+
+/**
+ * 瓦片坐标 -> OpenGL NDC（左上角为原点，Y 向上）
  */
 void tileToGL(int tileX, int tileY, int zoom,
               int screenW, int screenH,
@@ -80,35 +87,15 @@ void tileToGL(int tileX, int tileY, int zoom,
               float* outW, float* outH);
 
 /**
- * 经纬度到 Web Mercator 像素坐标（以地图左上角为原点）
- * 
- * @param lat 纬度
- * @param lon 经度
- * @param zoom 缩放级别
- * @return 该点的像素坐标（缩放级别对应）
+ * NDC 坐标 -> 屏幕像素
  */
-double latLonToMercatorPixel(double lat, double lon, int zoom);
+void ndcToScreen(float ndcX, float ndcY, int screenW, int screenH,
+                 int* outX, int* outY);
 
 /**
- * Web Mercator 像素坐标到经纬度
- * 
- * @param px 像素 X
- * @param py 像素 Y
- * @param zoom 缩放级别
- * @param outLat 输出纬度
- * @param outLon 输出经度
+ * Haversine 距离（米）
  */
-void mercatorPixelToLatLon(double px, double py, int zoom,
-                           double* outLat, double* outLon);
-
-/**
- * 计算指定缩放级别下的一个像素对应多少经度/纬度
- * 
- * @param zoom 缩放级别
- * @param outLonRes 输出：每像素经度分辨率
- * @param outLatRes 输出：每像素纬度分辨率
- */
-void getResolution(int zoom, double* outLonRes, double* outLatRes);
+double haversineDistance(double lat1, double lon1, double lat2, double lon2);
 
 } // namespace maplibre
 
