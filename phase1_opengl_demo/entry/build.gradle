@@ -1,0 +1,56 @@
+// build.gradle — entry 模块构建配置
+//
+// OpenHarmony 使用 hvigor 构建系统（基于 Gradle）。
+
+plugins {
+    id 'com.huawei.ohos.hap'
+    id 'com.huawei.ohos.compileSdk'
+}
+
+ohos {
+    // OpenHarmony API 级别（API 4.1+）
+    compileSdkVersion 4
+    // 最低兼容版本
+    minSdkVersion 4
+    // 目标设备
+    targetDeviceType 'phone'
+    
+    defaultConfig {
+        // 应用版本信息
+        consumerProguardFiles ''
+    }
+    
+    buildOption {
+        // 是否启用 ArkUI 2.0
+        arkEnabled true
+        // NDK 构建开关
+        nativeEnabled true
+    }
+    
+    // 签名配置（DevEco 自动使用默认调试签名）
+    signingConfigs {
+        debug {
+            storeFile file('${OH_SDK_ROOT}/toolchains/debug.keystore')
+            storePassword '123456'
+            keyAlias 'debug'
+            keyPassword '123456'
+        }
+    }
+    
+    buildTypes {
+        debug {
+            signingConfig signingConfigs.debug
+            debuggable true
+        }
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-rules.txt'), 'proguard-rules.txt'
+        }
+    }
+}
+
+// 依赖 native 模块
+dependencies {
+    implementation fileTree(dir: 'libs', include: ['*.har'])
+    implementation project(path: ':native')
+}
