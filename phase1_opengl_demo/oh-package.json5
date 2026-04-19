@@ -1,0 +1,13 @@
+{
+  "name": "maplibre-openharmony-native",
+  "version": "1.0.0",
+  "description": "MapLibre GL JS Native on OpenHarmony",
+  "main": "",
+  "author": "",
+  "license": "ISC",
+  "dependencies": {},
+  "devDependencies": {
+    "@ohos/hypium": "4.1.0.200",
+    "@ohos/hvigor-ohos-plugin": "4.1.0.200"
+  }
+}
