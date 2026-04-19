@@ -29,13 +29,13 @@ jobs:
         uses: actions/cache@v4
         with:
           path: |
-            ~/oh-sdk
+            /home/runner/oh-sdk
           key: oh-sdk-4.1.1-fixed
 
       - name: Download SDK
         if: steps.cache-sdk.outputs.cache-hit != 'true'
         run: |
-          mkdir -p ~/oh-sdk
+          mkdir -p $HOME/oh-sdk
           echo "=== Downloading OpenHarmony SDK (~2.3GB) ==="
           
           SDK_URL="https://repo.huaweicloud.com/openharmony/os/4.1.1-Release/ohos-sdk-windows_linux-public.tar.gz"
@@ -53,13 +53,14 @@ jobs:
           fi
           
           echo "Extracting..."
-          tar -xzf /tmp/ohos-sdk.tar.gz -C ~/oh-sdk --strip-components=1 2>&1 | tail -3
-          ls ~/oh-sdk/
+          mkdir -p $HOME/oh-sdk
+          tar -xzf /tmp/ohos-sdk.tar.gz -C $HOME/oh-sdk --strip-components=1 2>&1 | tail -3
+          ls $HOME/oh-sdk/
 
       - name: Verify SDK
         run: |
-          ls ~/oh-sdk/
-          ls ~/oh-sdk/native/ 2>/dev/null | head -5
+          ls $HOME/oh-sdk/
+          ls $HOME/oh-sdk/native/ 2>/dev/null | head -5
 
       - name: Install hvigor
         run: |
@@ -69,11 +70,11 @@ jobs:
 
       - name: Build HAP
         env:
-          OH_SDK_ROOT: /root/oh-sdk
+          OH_SDK_ROOT: /home/runner/oh-sdk
           JAVA_HOME: /usr/lib/jvm/java-17-openjdk-amd64
         run: |
           cd phase1_opengl_demo
-          export OH_SDK_ROOT=/root/oh-sdk
+          export OH_SDK_ROOT=$HOME/oh-sdk
           export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
           export PATH=$JAVA_HOME/bin:$OH_SDK_ROOT/native/build-tools/latest/ohos-sClang64/bin:$PATH
           
