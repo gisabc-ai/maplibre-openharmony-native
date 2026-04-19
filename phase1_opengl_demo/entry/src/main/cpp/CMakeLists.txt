@@ -1,18 +1,29 @@
 cmake_minimum_required(VERSION 3.18.1)
 
-project("maplibre_ohos")
+# ============================================================
+# OpenHarmony NDK Toolchain
+# ============================================================
+set(OH_SDK_ROOT "$ENV{OH_SDK_ROOT}")
+if(NOT OH_SDK_ROOT)
+    set(OH_SDK_ROOT "$ENV{HOME}/oh-sdk")
+endif()
+if(NOT EXISTS "$OH_SDK_ROOT")
+    set(OH_SDK_ROOT "$ENV{HOME}/oh-sdk")
+endif()
+
+set(CMAKE_TOOLCHAIN_FILE "${OH_SDK_ROOT}/build/cmake/ohos.toolchain.cmake")
+set(OHOS_ARCH arm64)
+
+project(maplibre_ohos)
 
 # ============================================================
-# 编译选项
+# Compile options
 # ============================================================
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-set(CMAKE_CXX_VISIBILITY_PRESET hidden)
-set(CMAKE_VISIBILITY_INLINES_HIDDEN ON)
-
 # ============================================================
-# 源文件（相对于 CMakeLists.txt 所在目录）
+# Source files
 # ============================================================
 add_library(maplibre_ohos SHARED
     main.cpp
@@ -23,40 +34,28 @@ add_library(maplibre_ohos SHARED
 )
 
 # ============================================================
-# 头文件搜索路径
+# Include dirs
 # ============================================================
 target_include_directories(maplibre_ohos PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
 # ============================================================
-# OpenHarmony NDK - 系统库
+# System libs
 # ============================================================
-find_library(log-lib     NAMES log)
-find_library(EGL-lib     NAMES EGL)
-find_library(GLESv2-lib NAMES GLESv2)
+find_library(LOG-lib     NAMES log REQUIRED)
+find_library(EGL-lib    NAMES EGL REQUIRED)
+find_library(GLESv2-lib NAMES GLESv2 REQUIRED)
 find_library(curl-lib   NAMES curl)
 
-target_link_libraries(maplibre_ohos
-    ${log-lib}
+target_link_libraries(maplibre_ohos PRIVATE
+    ${LOG-lib}
     ${EGL-lib}
     ${GLESv2-lib}
-    ${curl-lib}
 )
 
 # ============================================================
-# OpenHarmony NDK sysroot 配置
-# ============================================================
-if(DEFINED ENV{OH_SDK_ROOT})
-    set(CMAKE_SYSROOT "$ENV{OH_SDK_ROOT}/native")
-    set(CMAKE_FIND_ROOT_PATH "$ENV{OH_SDK_ROOT}/native/sysroot")
-    set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
-    set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
-    message(STATUS "OH_SDK_ROOT: $ENV{OH_SDK_ROOT}")
-endif()
-
-# ============================================================
-# 输出目录
+# Output
 # ============================================================
 set_target_properties(maplibre_ohos PROPERTIES
     LIBRARY_OUTPUT_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/../libs/${OHOS_ARCH}
