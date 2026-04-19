@@ -1,4 +1,10 @@
 {
   "modelVersion": "5.0.0",
-  "compatVersion": "4.0.0"
+  "compatVersion": "4.0.0",
+  "build": {
+    "hvigorVersion": "4.1.0.200",
+    "nodeVersion": "18.0.0",
+    "downloadingUrl": "https://repo.huaweicloud.com/openharmony-node/18.20.0.200/node-v18.20.0-linux-x64.tar.gz",
+    "forceDownloading": false
+  }
 }

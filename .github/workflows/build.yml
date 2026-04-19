@@ -1,4 +1,4 @@
-name: Build OpenHarmony App (with SDK)
+name: Build OpenHarmony App
 
 on:
   push:
@@ -6,10 +6,6 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
-
-env:
-  OH_SDK_VERSION: '4.1.7.5'
-  NODE_VERSION: '18'
 
 jobs:
   build:
@@ -23,140 +19,95 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: ${{ env.NODE_VERSION }}
-
-      - name: Install dependencies
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq python3 python3-pip curl unzip zip \
-            openjdk-17-jdk maven build-essential git-lfs
-          echo "JDK version:"
-          java -version 2>&1 | head -1
+          node-version: '18'
 
       # ============================================================
-      # Step 1: Download OpenHarmony SDK (Huawei Cloud Mirror)
+      # 下载 OpenHarmony SDK（只用一次，之后有缓存）
       # ============================================================
-      - name: Download OpenHarmony SDK
-        id: download-sdk
+      - name: Cache OpenHarmony SDK
+        id: cache-sdk
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/oh-sdk
+          key: oh-sdk-4.1.1-fixed
+
+      - name: Download SDK
+        if: steps.cache-sdk.outputs.cache-hit != 'true'
         run: |
-          echo "=== Downloading OpenHarmony SDK ==="
-          echo "Version: ${{ env.OH_SDK_VERSION }}"
+          mkdir -p ~/oh-sdk
+          echo "=== Downloading OpenHarmony SDK (~2.3GB) ==="
           
           SDK_URL="https://repo.huaweicloud.com/openharmony/os/4.1.1-Release/ohos-sdk-windows_linux-public.tar.gz"
-          SDK_DIR="/opt/oh-sdk"
           
-          echo "Downloading from: $SDK_URL"
-          mkdir -p "$SDK_DIR"
+          curl -L --connect-timeout 60 --max-time 7200 \
+            --progress-bar \
+            "$SDK_URL" -o /tmp/ohos-sdk.tar.gz
           
-          # 下载 SDK（约 2.3 GB，使用 .NET 代理或直接下载）
-          if curl -L --connect-timeout 30 --max-time 3600 \
-              "$SDK_URL" -o /tmp/ohos-sdk.tar.gz 2>&1 | tail -5; then
-            echo "Download complete, extracting..."
-            tar -xzf /tmp/ohos-sdk.tar.gz -C /tmp/ 2>&1 | tail -3
-            ls /tmp/ | grep -i oh-sdk
-            # 移动到目标位置
-            OH_SDK_ROOT=$(find /tmp -maxdepth 2 -name "oh-sdk" -type d | head -1)
-            if [ -n "$OH_SDK_ROOT" ] && [ -d "$OH_SDK_ROOT" ]; then
-              cp -r "$OH_SDK_ROOT" "$SDK_DIR/"
-              echo "SDK_UNZIPPED=1" >> $GITHUB_ENV
-              echo "SDK_DIR=$SDK_DIR" >> $GITHUB_ENV
-              echo "SDK installed at: $SDK_DIR"
-              ls "$SDK_DIR/"
-            else
-              echo "SDK_UNZIPPED=0" >> $GITHUB_ENV
-              echo "SDK_DIR=" >> $GITHUB_ENV
-            fi
-          else
-            echo "SDK download failed, trying alternate mirror..."
-            echo "SDK_UNZIPPED=0" >> $GITHUB_ENV
-            echo "SDK_DIR=" >> $GITHUB_ENV
+          FILE_SIZE=$(stat -c%s /tmp/ohos-sdk.tar.gz 2>/dev/null || echo 0)
+          echo "Downloaded: $FILE_SIZE bytes ($(du -h /tmp/ohos-sdk.tar.gz | cut -f1))"
+          
+          if [ "$FILE_SIZE" -lt 1000000 ]; then
+            echo "ERROR: File too small"
+            exit 1
           fi
-
-      # ============================================================
-      # Step 2: Huawei Developer Login (optional, for publishing)
-      # ============================================================
-      - name: Huawei Developer Login (optional)
-        id: hw-login
-        if: env.HW_CREDENTIALS != ''
-        env:
-          HW_CREDENTIALS: ${{ secrets.HW_CREDENTIALS }}
-        run: |
-          echo "=== Logging into Huawei Developer Portal ==="
-          CRED=$(echo "$HW_CREDENTIALS" | base64 -d)
-          PHONE="${CRED%%:*}"
-          PASSWORD="${CRED##*:}"
-          echo "Login ID: ${PHONE:0:3}***${PHONE: -4}"
-          WORKDIR="/tmp/hw_login"
-          mkdir -p "$WORKDIR"
-          cd "$WORKDIR"
-          TOKEN_RESP=$(curl -s --max-time 20 -c cookies.txt \
-              -X POST "https://oauth-login.cloud.huawei.com/oauth2/v3/token" \
-              -H "Content-Type: application/x-www-form-urlencoded" \
-              -d "grant_type=password&username=${PHONE}&password=${PASSWORD}&client_id=100492903" \
-            2>&1)
-          if echo "$TOKEN_RESP" | grep -q "refresh_token\|access_token"; then
-            echo "OAuth2 login OK"
-            echo "HW_LOGIN_SUCCESS=1" >> $GITHUB_ENV
-          else
-            echo "OAuth2 login failed: ${TOKEN_RESP:0:200}"
-          fi
-
-      # ============================================================
-      # Step 3: Build
-      # ============================================================
-      - name: Setup and Build
-        run: |
-          echo "=== Building OpenHarmony App ==="
-          echo "SDK unzipped: ${{ env.SDK_UNZIPPED }}"
-          echo "SDK dir: ${{ env.SDK_DIR }}"
           
+          echo "Extracting..."
+          tar -xzf /tmp/ohos-sdk.tar.gz -C ~/oh-sdk --strip-components=1 2>&1 | tail -3
+          ls ~/oh-sdk/
+
+      - name: Verify SDK
+        run: |
+          ls ~/oh-sdk/
+          ls ~/oh-sdk/native/ 2>/dev/null | head -5
+
+      - name: Install hvigor
+        run: |
           cd phase1_opengl_demo
-          
-          # 安装 Node 依赖
           npm install 2>&1 | tail -5
-          
-          # 安装 hvigor
           npm install -g @ohos/hvigor@4.1.0.200 2>&1 | tail -3
+
+      - name: Build HAP
+        env:
+          OH_SDK_ROOT: /root/oh-sdk
+          JAVA_HOME: /usr/lib/jvm/java-17-openjdk-amd64
+        run: |
+          cd phase1_opengl_demo
+          export OH_SDK_ROOT=/root/oh-sdk
+          export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
+          export PATH=$JAVA_HOME/bin:$OH_SDK_ROOT/native/build-tools/latest/ohos-sClang64/bin:$PATH
           
-          # 设置 SDK 路径
-          export PATH="$HOME/.npm-global/bin:$PATH"
-          if [ "${{ env.SDK_UNZIPPED }}" == "1" ]; then
-            export OH_SDK_ROOT="${{ env.SDK_DIR }}"
-            echo "SDK root: $OH_SDK_ROOT"
-            ls "$OH_SDK_ROOT/" 2>/dev/null || echo "SDK dir empty"
-            npx hvigor assembleApp --mode module -p product=default \
-              -p compileSdkVersion=4 \
-              -p runtimeOnly=true 2>&1 | tail -40
-          else
-            echo "No SDK - trying partial build (ArkTS only)"
-            npx hvigor assembleApp --mode module -p product=default 2>&1 | tail -40 || true
-          fi
+          echo "SDK: $OH_SDK_ROOT"
+          echo "java: $(java -version 2>&1 | head -1)"
+          
+          chmod +x hvigor/hvigor
+          
+          echo "=== SDK structure ==="
+          ls $OH_SDK_ROOT/
+          ls $OH_SDK_ROOT/build/cmake/ 2>/dev/null | head -5
+          
+          rm -rf entry/build
+          
+          ./hvigor/hvigor assembleHap \
+            --mode module \
+            -p product=default \
+            -p buildMode=debug \
+            -p compileSdkVersion=4 \
+            --no-daemon 2>&1 | tee /tmp/build.log
+          
+          echo "Exit: $?"
+          tail -30 /tmp/build.log
 
       - name: Find outputs
-        id: outputs
         run: |
-          echo "=== Finding outputs ==="
-          find . -path "*/build/outputs/*" -type f 2>/dev/null | head -20
-          find . -name "*.hap" -o -name "*.app" 2>/dev/null | head -10
+          find . -name "*.hap" 2>/dev/null | head -10
+          ls -la entry/build/default/outputs/default/ 2>/dev/null || echo "No outputs dir"
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         if: success()
         with:
           name: openharmony-hap
-          path: |
-            ${{ github.workspace }}/phase1_opengl_demo/entry/build/outputs/**/*.hap
-            ${{ github.workspace }}/phase1_opengl_demo/entry/build/outputs/**/*.app
-            ${{ github.workspace }}/phase1_opengl_demo/**/*.so
+          path: phase1_opengl_demo/entry/build/default/outputs/default/*.hap
           retention-days: 7
           ignore-no-files: true
-
-      - name: Build summary
-        if: always()
-        run: |
-          echo "## Build Result" >> $GITHUB_STEP_SUMMARY
-          echo "| Item | Value |" >> $GITHUB_STEP_SUMMARY
-          echo "|------|-------|" >> $GITHUB_STEP_SUMMARY
-          echo "| SDK Downloaded | ${{ env.SDK_UNZIPPED }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| SDK Dir | ${{ env.SDK_DIR }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Status | ${{ job.status }} |" >> $GITHUB_STEP_SUMMARY
