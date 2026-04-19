@@ -9,26 +9,8 @@
       "type": "entry",
       "hsp": false,
       "res": [
-        {
-          "path": "src/main/resources",
-          "excludeDirs": []
-        },
-        {
-          "path": "src/main/ets/pages",
-          "excludeDirs": []
-        }
-      ],
-      "dependencies": []
-    },
-    {
-      "name": "web",
-      "type": "shared",
-      "hsp": false,
-      "res": [
-        {
-          "path": "src/main/resources",
-          "excludeDirs": []
-        }
+        { "path": "src/main/resources", "excludeDirs": [] },
+        { "path": "src/main/ets/pages", "excludeDirs": [] }
       ],
       "dependencies": []
     }
