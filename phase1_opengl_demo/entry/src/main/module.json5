@@ -33,18 +33,13 @@
         ]
       }
     ],
-    "dependencies": [
-      {
-        "moduleName": "native",
-        "abiType": "c++"
-      }
-    ],
+    "dependencies": [],
     "nativenav": {
       "nativeLibDependencies": [
         "libmaplibre_ohos.so"
       ],
       "srcPath": [
-        "../native/src"
+        "./src/main/cpp"
       ]
     }
   }
