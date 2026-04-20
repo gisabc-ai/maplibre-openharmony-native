@@ -26,7 +26,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: /home/runner/oh-sdk
-          key: oh-sdk-4.1.1-fixed
+          key: oh-sdk-latest
 
       - name: Download SDK
         if: steps.cache-sdk.outputs.cache-hit != 'true'
@@ -128,7 +128,7 @@ jobs:
             --mode module \
             -p product=default \
             -p buildMode=debug \
-            -p compileSdkVersion=4 \
+            -p compileSdkVersion=5 \
             --no-daemon 2>&1 | tee /tmp/build.log
           
           EXIT_CODE=${PIPESTATUS[0]}
