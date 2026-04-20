@@ -45,35 +45,54 @@ jobs:
       - name: Verify SDK
         run: |
           ls $HOME/oh-sdk/
-          echo "native:" && ls $HOME/oh-sdk/native/ 2>/dev/null | head -5
-          echo "build-tools:" && ls $HOME/oh-sdk/build-tools/ 2>/dev/null | head -5
+          ls $HOME/oh-sdk/native/ 2>/dev/null | head -5
+          ls $HOME/oh-sdk/toolchains/ 2>/dev/null | head -5
 
       - name: Install hvigor
         run: |
           cd phase1_opengl_demo
+          chmod +x hvigor/hvigor
+          
+          # Install via npm
           npm install 2>&1 | tail -5
-          npm install -g @ohos/hvigor@4.1.0.200 2>&1 | tail -3
+          npm install -g @ohos/hvigor@4.1.0.200 2>&1 | tail -5
+          
+          echo "=== node_modules bin ==="
+          ls node_modules/.bin/ 2>/dev/null | head -10 || echo "no node_modules/.bin"
+          
+          echo "=== hvigor version ==="
+          ./hvigor/hvigor --version 2>&1 || echo "hvigor version failed"
 
       - name: Build HAP
         env:
-          OH_SDK_ROOT: /home/runner/oh-sdk
+          OHOS_SDK_ROOT: /home/runner/oh-sdk
+          OHOS_SDK_HOME: /home/runner/oh-sdk
           JAVA_HOME: /usr/lib/jvm/java-17-openjdk-amd64
         run: |
           cd phase1_opengl_demo
-          export OH_SDK_ROOT=$HOME/oh-sdk
+          export OHOS_SDK_ROOT=/home/runner/oh-sdk
+          export OHOS_SDK_HOME=/home/runner/oh-sdk
           export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
           export PATH=$JAVA_HOME/bin:$PATH
           
-          chmod +x hvigor/hvigor
-          
-          echo "=== SDK verification ==="
-          echo "SDK: $OH_SDK_ROOT"
-          echo "java: $(java -version 2>&1 | head -1)"
-          echo "ls SDK: $(ls $OH_SDK_ROOT/ | tr '\n' ' ')"
+          echo "=== Environment ==="
+          echo "OHOS_SDK_ROOT: $OHOS_SDK_ROOT"
+          echo "JAVA: $(java -version 2>&1 | head -1)"
+          echo "NODE: $(node --version)"
+          echo ""
+          echo "=== SDK toolchains ==="
+          ls $OHOS_SDK_ROOT/toolchains/ 2>/dev/null || echo "no toolchains"
+          echo ""
+          echo "=== node_modules bin ==="
+          ls node_modules/.bin/ 2>/dev/null | head -10 || echo "no .bin"
+          echo ""
+          echo "=== hvigor --version ==="
+          ./hvigor/hvigor --version 2>&1
+          echo ""
           
           rm -rf entry/build
           
-          echo "=== Running hvigor ==="
+          echo "=== Running hvigor assembleHap ==="
           ./hvigor/hvigor assembleHap \
             --mode module \
             -p product=default \
@@ -83,31 +102,21 @@ jobs:
           
           EXIT_CODE=${PIPESTATUS[0]}
           echo "Hvigor exit code: $EXIT_CODE"
-          echo ""
-          echo "=== Full build log ==="
-          cat /tmp/build.log
-          echo ""
-          echo "=== Build log (last 100 lines) ==="
-          tail -100 /tmp/build.log
+          tail -50 /tmp/build.log
 
       - name: Find and Package Outputs
         run: |
           cd phase1_opengl_demo
-          echo "=== Directory structure ==="
-          find . -maxdepth 4 -type d 2>/dev/null | head -30
-          echo ""
-          echo "=== entry/build ==="
-          find entry/build -type f 2>/dev/null | head -30
+          echo "=== Directory ==="
+          pwd && ls -la
           echo ""
           echo "=== ALL .hap files ==="
           find . -iname "*.hap" 2>/dev/null
           echo ""
-          echo "=== ALL .so files ==="
-          find . -iname "*.so" 2>/dev/null | head -20
+          echo "=== entry/build tree ==="
+          find entry/build -type f 2>/dev/null | head -30
           echo ""
-          # Package everything in build as artifact
           if [ -d entry/build ]; then
-            echo "=== Packaging entry/build as artifact ==="
             tar -czvf entry-build.tar.gz entry/build 2>&1
             echo "Packaged: $(du -h entry-build.tar.gz | cut -f1)"
           fi
@@ -119,8 +128,7 @@ jobs:
           name: openharmony-build-dir
           path: |
             ${{ github.workspace }}/phase1_opengl_demo/entry-build.tar.gz
-            ${{ github.workspace }}/phase1_opengl_demo/entry/build/**/*.hap
-            ${{ github.workspace }}/phase1_opengl_demo/**/*.so
+            ${{ github.workspace }}/phase1_opengl_demo/**/*.hap
           retention-days: 7
           ignore-no-files: true
 
