@@ -21,15 +21,11 @@ jobs:
         with:
           node-version: '18'
 
-      # ============================================================
-      # 下载 OpenHarmony SDK（只用一次，之后有缓存）
-      # ============================================================
       - name: Cache OpenHarmony SDK
         id: cache-sdk
         uses: actions/cache@v4
         with:
-          path: |
-            /home/runner/oh-sdk
+          path: /home/runner/oh-sdk
           key: oh-sdk-4.1.1-fixed
 
       - name: Download SDK
@@ -37,30 +33,20 @@ jobs:
         run: |
           mkdir -p $HOME/oh-sdk
           echo "=== Downloading OpenHarmony SDK (~2.3GB) ==="
-          
           SDK_URL="https://repo.huaweicloud.com/openharmony/os/4.1.1-Release/ohos-sdk-windows_linux-public.tar.gz"
-          
           curl -L --connect-timeout 60 --max-time 7200 \
-            --progress-bar \
-            "$SDK_URL" -o /tmp/ohos-sdk.tar.gz
-          
+            --progress-bar "$SDK_URL" -o /tmp/ohos-sdk.tar.gz
           FILE_SIZE=$(stat -c%s /tmp/ohos-sdk.tar.gz 2>/dev/null || echo 0)
           echo "Downloaded: $FILE_SIZE bytes ($(du -h /tmp/ohos-sdk.tar.gz | cut -f1))"
-          
-          if [ "$FILE_SIZE" -lt 1000000 ]; then
-            echo "ERROR: File too small"
-            exit 1
-          fi
-          
-          echo "Extracting..."
-          mkdir -p $HOME/oh-sdk
+          if [ "$FILE_SIZE" -lt 1000000 ]; then echo "ERROR: File too small"; exit 1; fi
           tar -xzf /tmp/ohos-sdk.tar.gz -C $HOME/oh-sdk --strip-components=1 2>&1 | tail -3
           ls $HOME/oh-sdk/
 
       - name: Verify SDK
         run: |
           ls $HOME/oh-sdk/
-          ls $HOME/oh-sdk/native/ 2>/dev/null | head -5
+          echo "native:" && ls $HOME/oh-sdk/native/ 2>/dev/null | head -5
+          echo "build-tools:" && ls $HOME/oh-sdk/build-tools/ 2>/dev/null | head -5
 
       - name: Install hvigor
         run: |
@@ -76,19 +62,18 @@ jobs:
           cd phase1_opengl_demo
           export OH_SDK_ROOT=$HOME/oh-sdk
           export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
-          export PATH=$JAVA_HOME/bin:$OH_SDK_ROOT/native/build-tools/latest/ohos-sClang64/bin:$PATH
-          
-          echo "SDK: $OH_SDK_ROOT"
-          echo "java: $(java -version 2>&1 | head -1)"
+          export PATH=$JAVA_HOME/bin:$PATH
           
           chmod +x hvigor/hvigor
           
-          echo "=== SDK structure ==="
-          ls $OH_SDK_ROOT/
-          ls $OH_SDK_ROOT/build/cmake/ 2>/dev/null | head -5
+          echo "=== SDK verification ==="
+          echo "SDK: $OH_SDK_ROOT"
+          echo "java: $(java -version 2>&1 | head -1)"
+          echo "ls SDK: $(ls $OH_SDK_ROOT/ | tr '\n' ' ')"
           
           rm -rf entry/build
           
+          echo "=== Running hvigor ==="
           ./hvigor/hvigor assembleHap \
             --mode module \
             -p product=default \
@@ -96,34 +81,53 @@ jobs:
             -p compileSdkVersion=4 \
             --no-daemon 2>&1 | tee /tmp/build.log
           
-          echo "Exit: $?"
-          tail -30 /tmp/build.log
+          EXIT_CODE=${PIPESTATUS[0]}
+          echo "Hvigor exit code: $EXIT_CODE"
+          echo ""
+          echo "=== Full build log ==="
+          cat /tmp/build.log
+          echo ""
+          echo "=== Build log (last 100 lines) ==="
+          tail -100 /tmp/build.log
 
-      - name: Find outputs
+      - name: Find and Package Outputs
         run: |
-          echo "=== Current directory ==="
-          pwd && ls -la
+          cd phase1_opengl_demo
+          echo "=== Directory structure ==="
+          find . -maxdepth 4 -type d 2>/dev/null | head -30
           echo ""
           echo "=== entry/build ==="
           find entry/build -type f 2>/dev/null | head -30
           echo ""
-          echo "=== ALL .hap/.HAP files ==="
-          find . -iname "*.hap" 2>/dev/null | head -20
+          echo "=== ALL .hap files ==="
+          find . -iname "*.hap" 2>/dev/null
           echo ""
-          echo "=== ALL build output dirs ==="
-          find . -path "*/build/outputs/*" -type f 2>/dev/null | head -20
+          echo "=== ALL .so files ==="
+          find . -iname "*.so" 2>/dev/null | head -20
           echo ""
-          echo "=== entry/build/default/outputs/default ==="
-          ls -laR entry/build/default/outputs/default/ 2>/dev/null || echo "Dir not found"
+          # Package everything in build as artifact
+          if [ -d entry/build ]; then
+            echo "=== Packaging entry/build as artifact ==="
+            tar -czvf entry-build.tar.gz entry/build 2>&1
+            echo "Packaged: $(du -h entry-build.tar.gz | cut -f1)"
+          fi
 
-      - name: Upload artifacts
+      - name: Upload Build Directory
         uses: actions/upload-artifact@v4
         if: success()
         with:
-          name: openharmony-hap
+          name: openharmony-build-dir
           path: |
-            ${{ github.workspace }}/phase1_opengl_demo/entry/build/default/outputs/default/*.hap
-            ${{ github.workspace }}/**/*.hap
-            ${{ github.workspace }}/**/entry-default*.hap
+            ${{ github.workspace }}/phase1_opengl_demo/entry-build.tar.gz
+            ${{ github.workspace }}/phase1_opengl_demo/entry/build/**/*.hap
+            ${{ github.workspace }}/phase1_opengl_demo/**/*.so
           retention-days: 7
           ignore-no-files: true
+
+      - name: Upload Build Log
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: build-log
+          path: /tmp/build.log
+          retention-days: 7
