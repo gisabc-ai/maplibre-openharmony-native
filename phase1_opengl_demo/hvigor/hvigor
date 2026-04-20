@@ -1,34 +1,33 @@
 #!/bin/bash
 #
-# hvigor wrapper script for Linux/macOS
+# hvigor wrapper - invokes the hvigor binary from node_modules or npm global
 #
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-# OpenHarmony SDK
-OHOS_SDK_HOME="${OHOS_SDK_HOME:-$HOME/oh-sdk}"
-export OHOS_SDK_HOME
+export OHOS_SDK_HOME="${OHOS_SDK_HOME:-$HOME/oh-sdk}"
+export OHOS_SDK_ROOT="$OHOS_SDK_HOME"
 
-# Find node_modules .bin hvigor
+# Priority: node_modules > npm global > SDK toolchains > system
 if [ -f "$PROJECT_DIR/node_modules/.bin/hvigor" ]; then
-    echo "Using local hvigor from node_modules"
     exec "$PROJECT_DIR/node_modules/.bin/hvigor" "$@"
 elif [ -f "$PROJECT_DIR/node_modules/@ohos/hvigor/hvigorw" ]; then
-    echo "Using local hvigorw"
     exec "$PROJECT_DIR/node_modules/@ohos/hvigor/hvigorw" "$@"
 elif [ -f "$OHOS_SDK_HOME/toolchains/hvigor/bin/hvigor" ]; then
-    echo "Using SDK hvigor"
     exec "$OHOS_SDK_HOME/toolchains/hvigor/bin/hvigor" "$@"
+elif [ -f "$HOME/.npm-global/bin/hvigor" ]; then
+    exec "$HOME/.npm-global/bin/hvigor" "$@"
 elif which hvigor >/dev/null 2>&1; then
-    echo "Using system hvigor"
     exec hvigor "$@"
 else
-    echo "Error: hvigor not found."
+    echo "ERROR: hvigor not found"
     echo "OHOS_SDK_HOME: $OHOS_SDK_HOME"
     echo "PROJECT_DIR: $PROJECT_DIR"
-    echo "node_modules: $(ls $PROJECT_DIR/node_modules/.bin/ 2>/dev/null | head -5)"
-    echo "SDK toolchains: $(ls $OHOS_SDK_HOME/toolchains/ 2>/dev/null)"
+    echo "node_modules/.bin:"
+    ls "$PROJECT_DIR/node_modules/.bin/" 2>/dev/null || echo "  (none)"
+    echo "npm global bin:"
+    npm root -g 2>/dev/null | xargs ls 2>/dev/null || echo "  (none)"
     exit 1
 fi
