@@ -48,20 +48,46 @@ jobs:
           ls $HOME/oh-sdk/native/ 2>/dev/null | head -5
           ls $HOME/oh-sdk/toolchains/ 2>/dev/null | head -5
 
-      - name: Install hvigor
+      - name: Install hvigor and dependencies
+        env:
+          OHOS_SDK_ROOT: /home/runner/oh-sdk
+          OHOS_SDK_HOME: /home/runner/oh-sdk
         run: |
           cd phase1_opengl_demo
-          chmod +x hvigor/hvigor
           
-          # Install via npm
-          npm install 2>&1 | tail -5
-          npm install -g @ohos/hvigor@4.1.0.200 2>&1 | tail -5
+          echo "=== SDK contents ==="
+          ls $OHOS_SDK_ROOT/
+          ls $OHOS_SDK_ROOT/toolchains/ 2>/dev/null || echo "no toolchains"
+          echo ""
           
+          # Use SDK's own Node.js if available
+          if [ -d "$OHOS_SDK_ROOT/toolchains/node" ]; then
+            export PATH="$OHOS_SDK_ROOT/toolchains/node/bin:$PATH"
+          fi
+          echo "node: $(node --version 2>/dev/null || echo 'not found')"
+          echo "npm: $(npm --version 2>/dev/null || echo 'not found')"
+          
+          # Install dependencies
+          if command -v ohpm &>/dev/null; then
+            echo "Installing via ohpm..."
+            ohpm install 2>&1 | tail -10
+          else
+            echo "Installing via npm..."
+            npm install 2>&1 | tail -10
+          fi
+          
+          echo ""
           echo "=== node_modules bin ==="
-          ls node_modules/.bin/ 2>/dev/null | head -10 || echo "no node_modules/.bin"
+          ls node_modules/.bin/ 2>/dev/null | head -15 || echo "no .bin"
+          echo ""
           
-          echo "=== hvigor version ==="
-          ./hvigor/hvigor --version 2>&1 || echo "hvigor version failed"
+          echo "=== hvigor wrapper check ==="
+          chmod +x hvigor/hvigor
+          ./hvigor/hvigor --version 2>&1 || {
+            echo "hvigor not in node_modules, trying npm install -g..."
+            npm install -g @ohos/hvigor@4.1.0.200 2>&1 | tail -5
+            ./hvigor/hvigor --version 2>&1 || echo "hvigor version FAILED"
+          }
 
       - name: Build HAP
         env:
@@ -73,26 +99,31 @@ jobs:
           export OHOS_SDK_ROOT=/home/runner/oh-sdk
           export OHOS_SDK_HOME=/home/runner/oh-sdk
           export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
-          export PATH=$JAVA_HOME/bin:$PATH
+          export PATH=$JAVA_HOME/bin:$OHOS_SDK_ROOT/toolchains/node/bin:$PATH
           
           echo "=== Environment ==="
           echo "OHOS_SDK_ROOT: $OHOS_SDK_ROOT"
           echo "JAVA: $(java -version 2>&1 | head -1)"
           echo "NODE: $(node --version)"
+          echo "NPM: $(npm --version)"
           echo ""
+          
           echo "=== SDK toolchains ==="
-          ls $OHOS_SDK_ROOT/toolchains/ 2>/dev/null || echo "no toolchains"
+          ls $OHOS_SDK_ROOT/toolchains/ 2>/dev/null
           echo ""
-          echo "=== node_modules bin ==="
-          ls node_modules/.bin/ 2>/dev/null | head -10 || echo "no .bin"
-          echo ""
-          echo "=== hvigor --version ==="
+          
+          echo "=== hvigor wrapper ==="
+          chmod +x hvigor/hvigor
           ./hvigor/hvigor --version 2>&1
+          echo ""
+          
+          echo "=== node_modules bin ==="
+          ls node_modules/.bin/ 2>/dev/null | head -10
           echo ""
           
           rm -rf entry/build
           
-          echo "=== Running hvigor assembleHap ==="
+          echo "=== BUILDING HAP ==="
           ./hvigor/hvigor assembleHap \
             --mode module \
             -p product=default \
@@ -101,15 +132,12 @@ jobs:
             --no-daemon 2>&1 | tee /tmp/build.log
           
           EXIT_CODE=${PIPESTATUS[0]}
-          echo "Hvigor exit code: $EXIT_CODE"
+          echo "Exit code: $EXIT_CODE"
           tail -50 /tmp/build.log
 
       - name: Find and Package Outputs
         run: |
           cd phase1_opengl_demo
-          echo "=== Directory ==="
-          pwd && ls -la
-          echo ""
           echo "=== ALL .hap files ==="
           find . -iname "*.hap" 2>/dev/null
           echo ""
