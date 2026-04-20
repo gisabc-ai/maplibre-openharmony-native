@@ -101,14 +101,29 @@ jobs:
 
       - name: Find outputs
         run: |
-          find . -name "*.hap" 2>/dev/null | head -10
-          ls -la entry/build/default/outputs/default/ 2>/dev/null || echo "No outputs dir"
+          echo "=== Current directory ==="
+          pwd && ls -la
+          echo ""
+          echo "=== entry/build ==="
+          find entry/build -type f 2>/dev/null | head -30
+          echo ""
+          echo "=== ALL .hap/.HAP files ==="
+          find . -iname "*.hap" 2>/dev/null | head -20
+          echo ""
+          echo "=== ALL build output dirs ==="
+          find . -path "*/build/outputs/*" -type f 2>/dev/null | head -20
+          echo ""
+          echo "=== entry/build/default/outputs/default ==="
+          ls -laR entry/build/default/outputs/default/ 2>/dev/null || echo "Dir not found"
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         if: success()
         with:
           name: openharmony-hap
-          path: phase1_opengl_demo/entry/build/default/outputs/default/*.hap
+          path: |
+            ${{ github.workspace }}/phase1_opengl_demo/entry/build/default/outputs/default/*.hap
+            ${{ github.workspace }}/**/*.hap
+            ${{ github.workspace }}/**/entry-default*.hap
           retention-days: 7
           ignore-no-files: true
