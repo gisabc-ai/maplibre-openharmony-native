@@ -60,19 +60,46 @@ jobs:
           ls $OHOS_SDK_ROOT/toolchains/ 2>/dev/null || echo "no toolchains"
           echo ""
           
-          # Use SDK's own Node.js if available
+          # Discover SDK toolchains - check both direct path and linux subdirectory
+          echo "=== Discovering SDK toolchains ==="
+          if [ -d "$OHOS_SDK_ROOT/toolchains/ohpm" ]; then
+            OHPM_DIR="$OHOS_SDK_ROOT/toolchains/ohpm"
+          elif [ -d "$OHOS_SDK_ROOT/toolchains/linux/ohpm" ]; then
+            OHPM_DIR="$OHOS_SDK_ROOT/toolchains/linux/ohpm"
+          else
+            # Search for ohpm binary in toolchains
+            OHPM_DIR=$(find $OHOS_SDK_ROOT/toolchains -name "ohpm" -type f 2>/dev/null | head -1 | xargs dirname 2>/dev/null || echo "")
+          fi
+          
+          if [ -n "$OHPM_DIR" ] && [ -d "$OHPM_DIR" ]; then
+            export PATH="$OHPM_DIR/bin:$PATH"
+            echo "Found ohpm at: $OHPM_DIR/bin"
+            ls "$OHPM_DIR/bin/" 2>/dev/null | head -10
+          else
+            echo "ohpm not found in SDK toolchains, checking full toolchains tree..."
+            find $OHOS_SDK_ROOT/toolchains -name "ohpm*" -type f 2>/dev/null | head -5
+          fi
+          
+          # Also add node to PATH if available
           if [ -d "$OHOS_SDK_ROOT/toolchains/node" ]; then
             export PATH="$OHOS_SDK_ROOT/toolchains/node/bin:$PATH"
+          elif [ -d "$OHOS_SDK_ROOT/toolchains/linux/node" ]; then
+            export PATH="$OHOS_SDK_ROOT/toolchains/linux/node/bin:$PATH"
           fi
           echo "node: $(node --version 2>/dev/null || echo 'not found')"
           echo "npm: $(npm --version 2>/dev/null || echo 'not found')"
+          echo "ohpm: $(ohpm --version 2>/dev/null || echo 'not found')"
           
-          # Install dependencies
+          # Install dependencies - prefer ohpm (OpenHarmony package manager)
           if command -v ohpm &>/dev/null; then
             echo "Installing via ohpm..."
+            # Configure ohpm registry if needed
+            ohpm config set registry https://repo.huaweicloud.com/openharmony/ 2>/dev/null || true
             ohpm install 2>&1 | tail -10
           else
-            echo "Installing via npm..."
+            echo "ohpm not available, trying npm with OpenHarmony registry..."
+            # Configure npm for @ohos packages - use OpenHarmony npm registry
+            npm config set @ohos:registry https://repo.huaweicloud.com/openharmony/ 2>/dev/null || true
             npm install 2>&1 | tail -10
           fi
           
@@ -84,8 +111,13 @@ jobs:
           echo "=== hvigor wrapper check ==="
           chmod +x hvigor/hvigor
           ./hvigor/hvigor --version 2>&1 || {
-            echo "hvigor not in node_modules, trying npm install -g..."
-            npm install -g @ohos/hvigor@4.1.0.200 2>&1 | tail -5
+            echo "hvigor not in node_modules, trying ohpm install..."
+            if command -v ohpm &>/dev/null; then
+              ohpm install @ohos/hvigor@4.1.0.200 2>&1 | tail -5
+            else
+              echo "hvigor not available, npm registry may not have @ohos/hvigor..."
+              npm install -g @ohos/hvigor@4.1.0.200 2>&1 | tail -5 || true
+            fi
             ./hvigor/hvigor --version 2>&1 || echo "hvigor version FAILED"
           }
 
@@ -167,3 +199,4 @@ jobs:
           name: build-log
           path: /tmp/build.log
           retention-days: 7
+
